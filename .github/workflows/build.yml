@@ -1,0 +1,47 @@
+name: Build APK
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 定位并解压 zip
+        run: |
+          ls -la
+          ZIP=$(find . -maxdepth 1 -type f -iname '*.zip' -print -quit)
+          if [ -z "$ZIP" ]; then echo "没找到 zip 文件"; exit 1; fi
+          echo "使用源码包: $ZIP"
+          rm -rf src && mkdir -p src
+          unzip -q "$ZIP" -d src
+          echo "=== 解压后关键文件 ==="
+          find src -maxdepth 4 \( -name gradlew -o -name 'settings.gradle*' -o -name 'build.gradle*' \) -print
+
+      - name: 定位项目根目录
+        run: |
+          F=$(find src -name gradlew -type f -print -quit)
+          [ -z "$F" ] && F=$(find src \( -name settings.gradle -o -name settings.gradle.kts \) -type f -print -quit)
+          if [ -z "$F" ]; then echo "没找到 gradlew / settings.gradle，可能不是标准 Gradle 工程"; exit 1; fi
+          echo "ROOT=$(dirname "$F")" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 构建 Debug APK
+        run: |
+          cd "$ROOT"
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: "**/build/outputs/apk/**/*.apk"
+          if-no-files-found: error
